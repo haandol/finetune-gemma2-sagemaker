@@ -7,13 +7,12 @@ from tqdm import tqdm
 from transformers import (
     AutoTokenizer,
     HfArgumentParser,
-    TrainingArguments,
     BitsAndBytesConfig,
     AutoModelForCausalLM,
     DataCollatorForLanguageModeling,
 )
 from peft import LoraConfig, prepare_model_for_kbit_training, get_peft_model
-from trl import SFTTrainer
+from trl import SFTTrainer, SFTConfig
 
 tqdm.pandas()
 
@@ -32,9 +31,6 @@ class ScriptArguments:
         default="google/gemma-2-9b",
         metadata={"help": "Model ID to use for SFT training"},
     )
-    max_seq_length: int = field(
-        default=512, metadata={"help": "The maximum sequence length for SFT Trainer"}
-    )
     use_qlora: bool = field(default=False, metadata={"help": "Whether to use QLORA"})
     merge_adapters: bool = field(
         metadata={"help": "Whether to merge weights for LoRA."},
@@ -43,7 +39,7 @@ class ScriptArguments:
 
 
 if __name__ == "__main__":
-    parser = HfArgumentParser((ScriptArguments, TrainingArguments))
+    parser = HfArgumentParser((ScriptArguments, SFTConfig))
     script_args, training_args = parser.parse_args_into_dataclasses()
     training_args.gradient_checkpointing_kwargs = dict(use_reentrant=False)
     torch_dtype = torch.bfloat16 if training_args.bf16 else torch.float32
@@ -112,6 +108,7 @@ if __name__ == "__main__":
 
     # model training
     tokenizer.pad_token = tokenizer.eos_token
+    tokenizer.padding_side = "right"
     torch.cuda.empty_cache()
 
     trainer = SFTTrainer(
@@ -121,12 +118,6 @@ if __name__ == "__main__":
         train_dataset=dataset,
         tokenizer=tokenizer,
         peft_config=lora_config,
-        packing=True,
-        max_seq_length=script_args.max_seq_length,
-        dataset_kwargs={
-            "add_special_tokens": False,  # We template with special tokens
-            "append_concat_token": False,  # No need to add additional separator token
-        },
     )
     trainer.train()
 
