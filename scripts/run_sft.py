@@ -9,7 +9,6 @@ from transformers import (
     HfArgumentParser,
     BitsAndBytesConfig,
     AutoModelForCausalLM,
-    DataCollatorForLanguageModeling,
 )
 from peft import LoraConfig, prepare_model_for_kbit_training, get_peft_model
 from trl import SFTTrainer, SFTConfig
@@ -64,7 +63,7 @@ if __name__ == "__main__":
         quantization_config = None
 
     # Load model
-    tokenizer = AutoTokenizer.from_pretrained(script_args.model_id, add_eos_token=True)
+    tokenizer = AutoTokenizer.from_pretrained(script_args.model_id, add_eos_token=False)
     model = AutoModelForCausalLM.from_pretrained(
         script_args.model_id,
         quantization_config=quantization_config,
@@ -107,14 +106,12 @@ if __name__ == "__main__":
     )
 
     # model training
-    tokenizer.pad_token = tokenizer.eos_token
     tokenizer.padding_side = "right"
     torch.cuda.empty_cache()
 
     trainer = SFTTrainer(
         model=model,
         args=training_args,
-        data_collator=DataCollatorForLanguageModeling(tokenizer, mlm=False),
         train_dataset=dataset,
         tokenizer=tokenizer,
         peft_config=lora_config,
