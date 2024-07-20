@@ -9,6 +9,7 @@ from transformers import (
     HfArgumentParser,
     BitsAndBytesConfig,
     AutoModelForCausalLM,
+    DataCollatorForLanguageModeling,
 )
 from peft import LoraConfig, prepare_model_for_kbit_training, get_peft_model
 from trl import SFTTrainer, SFTConfig
@@ -115,6 +116,7 @@ if __name__ == "__main__":
         train_dataset=dataset,
         tokenizer=tokenizer,
         peft_config=lora_config,
+        data_collator=DataCollatorForLanguageModeling(tokenizer, mlm=False),
     )
     trainer.train()
 
