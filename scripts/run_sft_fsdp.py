@@ -7,13 +7,13 @@ from datasets import load_dataset
 from tqdm import tqdm
 from transformers import (
     AutoTokenizer,
-    HfArgumentParser,
     BitsAndBytesConfig,
     AutoModelForCausalLM,
     DataCollatorForLanguageModeling,
     set_seed,
 )
 from peft import PeftModel, LoraConfig, prepare_model_for_kbit_training, get_peft_model
+from trl.commands.cli_utils import TrlParser
 from trl import SFTTrainer, SFTConfig
 
 tqdm.pandas()
@@ -57,7 +57,7 @@ def merge_and_save_model(model_id: str, adapter_dir: str, output_dir: str) -> No
 
 
 if __name__ == "__main__":
-    parser = HfArgumentParser((ScriptArguments, SFTConfig))
+    parser = TrlParser((ScriptArguments, SFTConfig))
     script_args, training_args = parser.parse_args_into_dataclasses()
     training_args.gradient_checkpointing_kwargs = dict(use_reentrant=False)
     torch_dtype = torch.bfloat16 if training_args.bf16 else torch.float32
@@ -76,8 +76,10 @@ if __name__ == "__main__":
         split="train",
     )
     # print random sample on rank 0
-    for index in random.sample(range(len(train_dataset)), 2):
-        print("sample training prompt: ", train_dataset[index]["prompt"])
+    if training_args.distributed_state.is_main_process:
+        for index in random.sample(range(len(train_dataset)), 2):
+            print("sample training prompt: ", train_dataset[index]["prompt"])
+    training_args.distributed_state.wait_for_everyone()  # wait for all processes to print
 
     # only use 4-bit quantization for the model
     quantization_config = BitsAndBytesConfig(
@@ -93,9 +95,8 @@ if __name__ == "__main__":
         script_args.model_id,
         quantization_config=quantization_config,
         torch_dtype=torch_dtype,
-        attn_implementation="eager",  # gemma2 model can not use Flash-Attention
+        attn_implementation="eager",  # gemma2 model can not use Flash-Attention, so it recommends eager mode
         device_map="auto",
-        force_download=True,
     )
     # disable decoding cache for training
     model.config.use_cache = False
@@ -141,7 +142,8 @@ if __name__ == "__main__":
         data_collator=DataCollatorForLanguageModeling(tokenizer, mlm=False),
     )
     # train
-    trainer.model.print_trainable_parameters()
+    if trainer.accelerator.is_main_process:
+        trainer.model.print_trainable_parameters()
     trainer.train()
     # save adapter weights
     trainer.save_model()
@@ -152,7 +154,11 @@ if __name__ == "__main__":
 
     # save model and tokenizer
     SAGEMAKER_SAVE_DIR = "/opt/ml/model"
-    merge_and_save_model(
-        script_args.model_id, trainer.model.adapter_dir, SAGEMAKER_SAVE_DIR
-    )
-    trainer.tokenizer.save_pretrained(SAGEMAKER_SAVE_DIR)
+    if training_args.distributed_state.is_main_process:
+        merge_and_save_model(
+            script_args.model_id,
+            training_args.output_dir,
+            SAGEMAKER_SAVE_DIR,
+        )
+        tokenizer.save_pretrained(SAGEMAKER_SAVE_DIR)
+    training_args.distributed_state.wait_for_everyone()  # wait for all processes to print
