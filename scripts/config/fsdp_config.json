@@ -1,0 +1,7 @@
+{
+  "fsdp_transformer_layer_cls_to_wrap": ["GemmaDecoderLayer"],
+  "fsdp_backward_prefetch": "backward_pre",
+  "fsdp_forward_prefetch": false,
+  "fsdp_use_orig_params": false,
+  "fsdp_cpu_ram_efficient_loading": true
+}
