@@ -146,19 +146,21 @@ if __name__ == "__main__":
         trainer.model.print_trainable_parameters()
     trainer.train()
     # save adapter weights
-    trainer.save_model()
+    trainer.save_model(training_args.output_dir)
+
+    # save model and tokenizer
+    SAGEMAKER_OUTPUT_DIR = "/opt/ml/model"
+    if training_args.distributed_state.is_main_process:
+        trainer.tokenizer.save_pretrained(SAGEMAKER_OUTPUT_DIR)
 
     del model
     del trainer
     torch.cuda.empty_cache()
 
-    # save model and tokenizer
-    SAGEMAKER_SAVE_DIR = "/opt/ml/model"
     if training_args.distributed_state.is_main_process:
         merge_and_save_model(
             script_args.model_id,
             training_args.output_dir,
-            SAGEMAKER_SAVE_DIR,
+            SAGEMAKER_OUTPUT_DIR,
         )
-        tokenizer.save_pretrained(SAGEMAKER_SAVE_DIR)
     training_args.distributed_state.wait_for_everyone()  # wait for all processes to print

@@ -43,17 +43,17 @@ class ScriptArguments:
 
 def merge_and_save_model(model_id: str, adapter_dir: str, output_dir: str) -> None:
     print("Trying to load a Peft model. It might take a while without feedback")
-    base_model = AutoModelForCausalLM.from_pretrained(
+    model = AutoModelForCausalLM.from_pretrained(
         model_id,
         low_cpu_mem_usage=True,
     )
-    peft_model = PeftModel.from_pretrained(base_model, adapter_dir)
-    model = peft_model.merge_and_unload()
+    model = PeftModel.from_pretrained(model, adapter_dir)
+    model = model.merge_and_unload()
 
     os.makedirs(output_dir, exist_ok=True)
     print(f"Saving the newly created merged model to {output_dir}")
     model.save_pretrained(output_dir, safe_serialization=True)
-    base_model.config.save_pretrained(output_dir)
+    model.config.save_pretrained(output_dir)
 
 
 if __name__ == "__main__":
@@ -144,15 +144,18 @@ if __name__ == "__main__":
     trainer.model.print_trainable_parameters()
     trainer.train()
     # save adapter weights
-    trainer.save_model()
+    trainer.save_model(training_args.output_dir)
+
+    # merge and save model and tokenizer
+    SAGEMAKER_OUTPUT_DIR = "/opt/ml/model"
+    trainer.tokenizer.save_pretrained(SAGEMAKER_OUTPUT_DIR)
 
     del model
     del trainer
     torch.cuda.empty_cache()
 
-    # save model and tokenizer
-    SAGEMAKER_SAVE_DIR = "/opt/ml/model"
     merge_and_save_model(
-        script_args.model_id, trainer.model.adapter_dir, SAGEMAKER_SAVE_DIR
+        script_args.model_id,
+        training_args.output_dir,
+        SAGEMAKER_OUTPUT_DIR,
     )
-    trainer.tokenizer.save_pretrained(SAGEMAKER_SAVE_DIR)
