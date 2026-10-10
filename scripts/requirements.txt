@@ -1,5 +1,5 @@
 transformers @ git+https://github.com/huggingface/transformers.git
-datasets==2.20.0
+datasets==5.0.1
 accelerate==0.32.1
 evaluate==0.4.2
 bitsandbytes==0.43.1
